@@ -1,0 +1,57 @@
+service: resume-parser-app
+
+provider:
+  name: aws
+  runtime: python3.9
+  region: us-east-1
+  iam:
+    role:
+      statements:
+        - Effect: Allow
+          Action:
+            - s3:PutObject
+            - s3:GetObject
+          Resource: "arn:aws:s3:::${self:custom.bucketName}/*"
+        - Effect: Allow
+          Action:
+            - textract:AnalyzeDocument
+          Resource: "*"
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:Scan
+          Resource: "arn:aws:dynamodb:*:*:table/${self:custom.tableName}"
+
+custom:
+  bucketName: resume-uploads-${opt:stage, 'dev'}
+  tableName: candidates-${opt:stage, 'dev'}
+
+functions:
+  uploadUser:
+    handler: handler.upload
+    events:
+      - http:
+          path: upload
+          method: post
+          cors: true
+
+  processResume:
+    handler: handler.process
+    events:
+      - s3:
+          bucket: ${self:custom.bucketName}
+          event: s3:ObjectCreated:*
+
+resources:
+  Resources:
+    CandidatesTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:custom.tableName}
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        BillingMode: PAY_PER_REQUEST
